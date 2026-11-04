@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png">
+<title>PJ Log</title>
+<style>
+:root{--bg:#111418;--c:#1b2027;--t:#e8eaed;--m:#8b94a0;--a:#ff7a1a;--ok:#3ecf8e;--bad:#ff5d5d;--bd:#2a313a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.45 system-ui,sans-serif;padding:0 0 76px}
+header{position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--bd);z-index:5;display:flex;align-items:center;gap:10px}
+header h1{font-size:18px;margin:0;flex:1}main{padding:12px 14px}
+.warn{background:#3a2a10;border:1px solid #6b4a14;color:#ffd48a;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px}
+.card,.blk{background:var(--c);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:8px 0}
+.sec{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--a);margin:16px 0 4px;font-weight:700}
+.hd{font-weight:700;margin-bottom:4px}.it{padding:1px 0}.nt{color:var(--m);font-size:13px;margin-top:4px}
+button{background:#262d36;color:var(--t);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;font:inherit;margin:4px 4px 0 0}
+button.pri{background:var(--a);color:#111;border:0;font-weight:700}
+.chips{margin:6px 0}.chips b{display:block;font-size:13px;color:var(--m);margin-top:4px}
+.chips button{padding:6px 10px;font-size:14px}.chips small{color:var(--m)}
+input,textarea,select{width:100%;background:#0e1115;color:var(--t);border:1px solid var(--bd);border-radius:8px;padding:9px;font:inherit;margin:4px 0}
+.sr{display:flex;gap:6px}.sr input:first-child{flex:2}.sr input{flex:1}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#0d1013;border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;border-radius:0;margin:0;padding:14px 0;color:var(--m)}nav button.on{color:var(--a);font-weight:700}
+#sh{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;z-index:20}
+#sh>div{background:var(--c);width:100%;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px}
+#tm{position:fixed;left:50%;transform:translateX(-50%);bottom:70px;background:var(--a);color:#111;font-weight:800;border-radius:20px;padding:4px 16px;z-index:9}
+#tm:empty{display:none}#tm button{padding:2px 8px;margin:0 0 0 8px}
+#ts{position:fixed;left:14px;right:14px;bottom:80px;background:#fff;color:#111;border-radius:10px;padding:10px 14px;display:none;z-index:30}
+.nav2{display:flex;align-items:center;justify-content:space-between}.nav2 b{font-size:17px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd)}
+.rb{background:#1d3a2c;border-color:#2c6a4c;color:#9df0c6}.feel button{font-size:22px;padding:6px 10px}.feel button.on{background:var(--a)}
+details summary{cursor:pointer;color:var(--a);font-weight:700;margin:14px 0 4px;text-transform:uppercase;font-size:12px;letter-spacing:.08em}
+</style></head><body>
+<header><h1>PJ Log</h1><button data-a="sync" title="Update workouts now">⟳ Sync</button></header>
+<main id="app"></main>
+<nav><button data-a="tab" data-t="w">Workout</button><button data-a="tab" data-t="h">History</button><button data-a="tab" data-t="l">Lifts</button><button data-a="tab" data-t="s">Settings</button></nav>
+<div id="sh"></div><div id="tm"></div><div id="ts"></div>
+<script>
+//PURE-START
+const KG=0.4536;
+const LIFTS=[['snatch','Snatch'],['psn','Power Snatch'],['clean','Clean'],['pcl','Power Clean'],['jerk','Jerk'],['cj','Clean & Jerk'],['bsq','Back Squat'],['fsq','Front Squat'],['ohs','Overhead Squat'],['dl','Deadlift'],['bench','Bench Press'],['pp','Push Press'],['press','Shoulder Press']];
+function lk(n){n=n.toLowerCase();if(/dumbbell|\bdb\b/.test(n))return null;
+if(/clean\s*(&|and)\s*jerk/.test(n))return'cj';if(/overhead squat/.test(n))return'ohs';
+if(/power snatch/.test(n))return'psn';if(/snatch/.test(n))return'snatch';
+if(/power clean/.test(n))return'pcl';if(/clean/.test(n))return'clean';if(/jerk/.test(n))return'jerk';
+if(/back squat/.test(n))return'bsq';if(/front squat/.test(n))return'fsq';if(/deadlift/.test(n))return'dl';
+if(/bench/.test(n))return'bench';if(/push press/.test(n))return'pp';if(/press/.test(n))return'press';return null}
+function blocks(w){const out=[];let c=null,i=0;
+w.sections.forEach(s=>{const push=()=>{if(c){c.i=i++;out.push(c);c=null}};const nb=()=>{push();c={sec:s.name,head:'',items:[],iv:[],notes:[]}};
+s.lines.forEach((l,li)=>{
+if(l.startsWith('•')){if(!c||c.notes.length)nb();c.items.push(l.replace(/^•\s*/,''));c.iv.push((s.vids||{})[li]||'')}
+else if(/^(even|odd) min:/i.test(l)){if(!c)nb();c.items.push('— '+l);c.iv.push('')}
+else if(/:\s*$/.test(l)&&!/^(weight|goal|note)/i.test(l)){if(!c||c.items.length||c.notes.length)nb();c.head+=(c.head?' ':'')+l}
+else{if(!c)nb();c.notes.push(l)}});push()});return out}
+function loads(b){const m=b.notes.join(' ').match(/Weight:\s*(.+?)\s+of\s+(T?)1RMs?\b\s*([A-Za-z ]*)/i);if(!m)return null;
+const ps=[...m[1].matchAll(/(\d+(?:\.\d+)?)%/g)].map(x=>+x[1]);if(!ps.length)return null;
+const keys=[],ex=m[3].trim();
+if(ex){const k=lk(ex);if(k)keys.push([ex,k])}
+if(!keys.length)b.items.forEach(it=>{const nm=it.replace(/^[\d\s]+/,'').replace(/\(.*?\)/g,'').trim();const k=lk(nm);if(k&&!keys.some(x=>x[1]==k))keys.push([nm,k])});
+return{ps,t:!!m[2],keys}}
+function calc(pr,p,t,inc){return pr?Math.round(pr*(t?.9:1)*p/100/inc)*inc:null}
+function plates(w,bar){let r=(w-bar)/2;if(r<0)return'bar only';const o=[];for(const p of[25,20,15,10,5,2.5,1,.5])while(r>=p-1e-9){o.push(p);r-=p}return(o.join(' + ')||'bar only')+(r>1e-6?' ≈':'')}
+function reps(b){const h=b.head;let m=h.match(/sets?\s+(?:of\s+)?([\d,\s]+)\s*reps/i);if(m)return m[1].split(/[,\s]+/).filter(Boolean).map(Number);
+m=h.match(/^([\d-]+)\s*reps/i);if(m)return m[1].split('-').map(Number);
+const s=+((h.match(/(\d+)\s*sets?/i)||[])[1]||0),n=+((b.items[0]||'').match(/^(\d+)\s/)||[])[1]||0;return s&&n?Array(s).fill(n):[]}
+function sig(b){const wn=(b.notes.join(' ').match(/Weight:[^.]*/i)||[''])[0];return(b.head+b.items.join('|')+(/%/.test(wn)?wn:'')).toLowerCase().replace(/[^a-z0-9%\/|]/g,'')}
+const e1=(w,r)=>r==1?w:w*(1+r/30);
+const nrm=s=>s.toLowerCase().replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim().replace(/s$/,'');
+function merge(a,b){const o=JSON.parse(JSON.stringify(a));b=b||{};
+for(const d in b.sc||{})if(!o.sc[d]||(b.sc[d].u||0)>(o.sc[d].u||0))o.sc[d]=b.sc[d];
+for(const k in b.prs||{})if(!o.prs[k]||(b.prs[k].u||0)>(o.prs[k].u||0))o.prs[k]=b.prs[k];
+if((b.su||0)>(o.su||0)){o.bw=b.bw;o.bar=b.bar;o.inc=b.inc;o.su=b.su}return o}
+//PURE-END
+const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LS=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},SV=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+let U=Object.assign({sc:{},prs:{},bw:null,bar:20,inc:1,su:0},LS('u')||{}),W=LS('w')||{workouts:{}},G=LS('gh')||{},V={tab:'w',date:null},T,usha=null,tmr;
+const today=()=>new Date().toLocaleDateString('sv'),add=(d,n)=>{const x=new Date(d+'T12:00');x.setDate(x.getDate()+n);return x.toLocaleDateString('sv')};
+const rest=d=>[0,4].includes(new Date(d+'T12:00').getDay()),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+V.date=today();
+function cv(t){t=t.replace(/(\d+)\/(\d+)#/g,(m,a)=>Math.round(a*KG)+' kg').replace(/(\d+)\/(\d+)(?=\s*(?:m\b|cal|[”"]))/g,'$1');return t.replace(/\bBW\/70%BW\b/g,U.bw?U.bw+' kg':'BW')}
+function toast(m){const t=$('#ts');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
+function sheet(h){const s=$('#sh');s.innerHTML='<div>'+h+'<button data-a="x">Close</button></div>';s.style.display='flex'}
+const closeSheet=()=>{$('#sh').style.display='none';$('#sh').innerHTML=''};
+// ---- GitHub
+const api=(p,o={})=>fetch(`https://api.github.com/repos/${G.repo}/${p}`,{...o,headers:{Authorization:'Bearer '+G.token,Accept:'application/vnd.github+json',...(o.headers||{})}});
+const b64=s=>{let b='';new TextEncoder().encode(s).forEach(c=>b+=String.fromCharCode(c));return btoa(b)};
+const dec=c=>new TextDecoder().decode(Uint8Array.from(atob(c.replace(/\n/g,'')),x=>x.charCodeAt(0)));
+async function loadW(){if(!G.repo)return render();try{const r=await api('contents/data/workouts.json?t='+Date.now(),{headers:{Accept:'application/vnd.github.raw+json'}});if(r.ok){W=await r.json();SV('w',W)}else if(r.status!=404)throw 0}catch(e){toast('Offline – showing saved data')}render()}
+async function loadU(){if(!G.repo)return;try{const r=await api('contents/data/user.json?t='+Date.now());if(r.status==404){usha=null;return pushU()}if(!r.ok)return;const j=await r.json();usha=j.sha;const rem=JSON.parse(dec(j.content)),m=merge(U,rem);U=m;SV('u',U);if(JSON.stringify(m)!==JSON.stringify(rem))await pushU();render()}catch(e){}}
+async function pushU(){if(!G.repo)return;try{const r=await api('contents/data/user.json',{method:'PUT',body:JSON.stringify({message:'update',content:b64(JSON.stringify(U)),...(usha?{sha:usha}:{})})});if(r.ok)usha=(await r.json()).content.sha;else if(r.status==409||r.status==422)await loadU()}catch(e){}}
+function save(){SV('u',U);clearTimeout(tmr);tmr=setTimeout(pushU,3000)}
+async function syncNow(){if(!G.token){V.tab='s';return render()}const before=W.generated_at;toast('Syncing…');
+const r=await api('actions/workflows/sync.yml/dispatches',{method:'POST',body:JSON.stringify({ref:'main'})});
+if(!r.ok)return toast('Could not start sync ('+r.status+'). Token needs Actions: read & write.');
+for(let i=0;i<24;i++){await sleep(5000);await loadW();if(W.generated_at!==before){toast(W.ok?'Updated ✓':'Sync failed: '+W.error);return}}toast('Still running – try again in a minute')}
+// ---- views
+function banner(){const m=[];if(!G.repo)m.push('Connect GitHub in Settings to load workouts.');else{
+if(W.ok===false)m.push('Last sync failed: '+W.error+'. Tap ⟳ Sync.');
+const age=W.generated_at?(Date.now()-new Date(W.generated_at))/36e5:null;
+if(age===null)m.push('No data yet. Tap ⟳ Sync.');else if(age>30)m.push('Workouts last updated '+Math.round(age)+' h ago.');
+const t=today();if(!W.workouts[t]&&!rest(t)&&age!==null)m.push("Today's workout isn't loaded yet – showing the latest available.")}
+return m.map(x=>`<div class="warn">${E(x)}</div>`).join('')}
+function repIdx(){const R={};Object.keys(W.workouts).sort().forEach(d=>blocks(W.workouts[d]).forEach(b=>{if(/warm|cool/i.test(b.sec)||!b.items.length)return;(R[sig(b)]=R[sig(b)]||[]).push({d,i:b.i})}));return R}
+function chips(b,L){if(!L)return'';let h='<div class="chips">';
+if(!L.keys.length)return h+L.ps.map(p=>`<button disabled>${p}%</button>`).join('')+'</div>';
+L.keys.forEach(([nm,k])=>{const pr=U.prs[k]?.v;h+=`<b>${E(nm)} · ${L.t?'% of T1RM (90% of 1RM)':'% of 1RM'}${pr?'':' – <a href="#" data-a="tab" data-t="l" style="color:var(--a)">set PR</a>'}</b>`;
+L.ps.forEach(p=>{const w=calc(pr,p,L.t,U.inc||1);h+=`<button data-a="pl" data-w="${w||''}">${w?`<b style="display:inline;color:var(--t)">${w} kg</b> <small>${p}%</small>`:p+'%'}</button>`})});return h+'</div>'}
+function bHTML(b,d,R){const sc=!/warm|cool/i.test(b.sec),L=loads(b),S=((U.sc[d]||{}).b||{})[b.i];let h='<div class="blk">';
+if(b.head)h+=`<div class="hd">${E(cv(b.head))}</div>`;b.items.forEach((i,x)=>h+=b.iv[x]?`<div class="it" data-a="vid" data-v="${b.iv[x]}" data-n="${E(cv(i))}" style="cursor:pointer"><span style="color:var(--a)">▶</span> ${E(cv(i))}</div>`:`<div class="it">${E(cv(i))}</div>`);h+=chips(b,L);
+b.notes.forEach(n=>h+=`<div class="nt">${E(cv(n))}</div>`);
+const rm=(b.head+' '+b.notes.join(' ')).match(/rest\s+(\d+)(?:-(\d+))?\s*min/i);if(rm)h+=`<button data-a="tm" data-s="${(rm[2]||rm[1])*60}">⏱ Rest ${rm[2]||rm[1]} min</button>`;
+if(sc){const rp=(R[sig(b)]||[]).filter(x=>x.d<d);if(rp.length)h+=`<button class="rb" data-a="rep" data-d="${d}" data-i="${b.i}">🔁 Repeated workout · last ${rp[rp.length-1].d}</button>`;
+h+=`<button class="pri" data-a="log" data-d="${d}" data-i="${b.i}">${S?'✓ Edit score':'Log score'}</button>`;
+if(S)h+=`<div class="nt">${E(S.res||'')} ${S.rx===false?'(scaled)':'(Rx)'} ${S.sets?.length?'· '+S.sets.map(x=>x.w+'×'+x.r).join(', '):''}${S.n?'<br>“'+E(S.n)+'”':''}</div>`}
+return h+'</div>'}
+function vDay(){const d=V.date,w=W.workouts[d];const lbl=new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
+let h=banner()+`<div class="nav2"><button data-a="step" data-n="-1">‹</button><b>${lbl}${d==today()?' · today':''}</b><button data-a="step" data-n="1">›</button></div>`;
+if(d!=today())h+='<button data-a="go" data-d="'+today()+'">Go to today</button>';
+if(!w){h+=`<div class="card">${rest(d)?'🛌 Rest day (Thu & Sun)':'No workout stored for this date.'}</div>`;const last=Object.keys(W.workouts).sort().filter(x=>x<d).pop();if(last&&!rest(d))h+=`<button data-a="go" data-d="${last}">Show latest stored (${last})</button>`;$('#app').innerHTML=h;return}
+if(w.cycle)h+=`<div class="nt">Cycle: ${E(w.cycle)}</div>`;
+const R=repIdx();let cur='';blocks(w).forEach(b=>{if(b.sec!==cur){if(cur)h+=/warm|cool/i.test(cur)?'</details>':'';cur=b.sec;h+=/warm|cool/i.test(cur)?`<details ${/warm/i.test(cur)?'open':''}><summary>${E(cur)}</summary>`:`<div class="sec">${E(cur)}</div>`}h+=bHTML(b,d,R)});if(/warm|cool/i.test(cur))h+='</details>';
+const s=U.sc[d]||{};h+=`<div class="card"><b>How did today feel?</b><div class="feel">${['😫','😕','😐','🙂','🔥'].map((e,i)=>`<button data-a="feel" data-v="${i+1}" class="${s.feel==i+1?'on':''}">${e}</button>`).join('')}</div><textarea id="dn" placeholder="Notes about the session…">${E(s.note||'')}</textarea></div>`;$('#app').innerHTML=h}
+function vHist(){const ds=[...new Set([...Object.keys(W.workouts),...Object.keys(U.sc)])].sort().reverse();let h=banner();
+h+=ds.length?ds.map(d=>{const s=U.sc[d],n=s?Object.keys(s.b||{}).length:0;return`<div class="row" data-a="go" data-d="${d}"><span>${d} ${new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'short'})}${W.workouts[d]?.cycle?' · '+E(W.workouts[d].cycle):''}</span><span>${n?n+' logged ':''}${['','😫','😕','😐','🙂','🔥'][s?.feel||0]}</span></div>`}).join(''):'<div class="card">Nothing yet.</div>';$('#app').innerHTML=h}
+function lh(){const M={};Object.keys(U.sc).sort().forEach(d=>Object.values(U.sc[d].b||{}).forEach(b=>(b.sets||[]).forEach(x=>{const k=nrm(x.l||'');if(!k||!x.w||!x.r)return;(M[k]=M[k]||{n:x.l,rows:[]}).rows.push({d,w:x.w,r:x.r})})));return M}
+function vLifts(){let h='<div class="card"><b>My 1RMs (kg)</b>'+LIFTS.map(([k,n])=>`<div class="row"><span>${n}${U.prs[k]?`<br><small class="nt">set ${U.prs[k].d||new Date(U.prs[k].u).toLocaleDateString('sv')}${U.prs[k].h?.length?' · prev '+U.prs[k].h.slice(-3).reverse().map(x=>x.v+' kg ('+x.d+')').join(', '):''}</small>`:''}</span><input style="width:90px;margin:0" type="number" inputmode="decimal" data-pr="${k}" value="${U.prs[k]?.v||''}"></div>`).join('')+'<div class="nt">Typed PRs are dated today; PRs accepted from a logged set use that workout date. Back squat % are calculated on T1RM (90% of this) when the programme says so.</div></div><div class="sec">Logged lifts</div>';
+const M=lh(),ks=Object.keys(M);h+=ks.length?ks.map(k=>`<div class="row" data-a="lift" data-k="${E(k)}"><span>${E(M[k].n)}</span><span>best ${Math.max(...M[k].rows.map(r=>r.w))} kg</span></div>`).join(''):'<div class="nt">Log sets in a workout to see history here.</div>';$('#app').innerHTML=h}
+function vSet(){$('#app').innerHTML=`<div class="card"><b>Training</b>Bodyweight (kg)<input id="bw" type="number" inputmode="decimal" value="${U.bw||''}">Bar weight (kg)<input id="bar" type="number" value="${U.bar}">Load increment (kg)<input id="inc" type="number" step="0.5" value="${U.inc}"></div>
+<div class="card"><b>GitHub</b><input id="repo" placeholder="user/pj-data" value="${E(G.repo||'')}"><input id="tok" type="password" placeholder="Token" value="${E(G.token||'')}"><button class="pri" data-a="gs">Save & load</button></div>
+<div class="card"><b>Backup</b><div class="nt">Your scores also live in data/user.json in your private repo.</div><button data-a="dl">Download .json</button><button data-a="cp">Copy to clipboard</button><textarea id="rt" placeholder="Paste a backup here to restore…"></textarea><input id="rf" type="file" accept=".json"><button data-a="rs">Restore</button></div>`}
+function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==V.tab));({w:vDay,h:vHist,l:vLifts,s:vSet})[V.tab]()}
+// ---- actions
+const dy=d=>U.sc[d]=U.sc[d]||{b:{}},touch=d=>{U.sc[d].u=Date.now();save()};
+const srow=r=>`<div class="sr"><input class="l" placeholder="Lift" value="${E(r.l||'')}"><input class="w" type="number" step="0.5" inputmode="decimal" placeholder="kg" value="${r.w??''}"><input class="r" type="number" inputmode="numeric" placeholder="reps" value="${r.r??''}"></div>`;
+function prefill(b){const L=loads(b);if(!L||!L.keys.length)return[];const[nm,k]=L.keys[0],rp=reps(b),n=Math.max(L.ps.length,rp.length,1);
+return Array.from({length:n},(_,i)=>({l:nm,w:calc(U.prs[k]?.v,L.ps[i]??L.ps[0],L.t,U.inc||1),r:rp[i]??rp[0]??''}))}
+function setPR(k,v,d){const o=U.prs[k];if(o&&o.v==v)return;U.prs[k]={v,d:d||today(),u:Date.now(),h:(o?.h||[]).concat(o?[{v:o.v,d:o.d||new Date(o.u).toLocaleDateString('sv')}]:[])};U.su=Date.now();save()}
+const ACT={
+tab:D=>{V.tab=D.t;render()},go:D=>{V.tab='w';V.date=D.d;render()},step:D=>{V.date=add(V.date,+D.n);render()},sync:()=>syncNow(),x:closeSheet,
+tm:D=>{clearInterval(T);let t=+D.s;const f=()=>{$('#tm').innerHTML=`⏱ ${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}<button data-a="tmx">✕</button>`;if(t--<=0){clearInterval(T);$('#tm').innerHTML='';navigator.vibrate&&navigator.vibrate([300,150,300])}};f();T=setInterval(f,1000)},
+vid:D=>{const[id,t]=D.v.split(':');sheet(`<h3>${E(D.n)}</h3><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube-nocookie.com/embed/${id}?playsinline=1&rel=0&autoplay=1${t?'&start='+t:''}" style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><p><a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" style="color:var(--a)">Video not playing? Open in YouTube</a></p>`)},
+tmx:()=>{clearInterval(T);$('#tm').innerHTML=''},
+pl:D=>{if(D.w)toast(D.w+' kg → '+plates(+D.w,U.bar||20)+' per side (bar '+(U.bar||20)+' kg)')},
+feel:D=>{const s=dy(V.date);s.feel=s.feel==+D.v?0:+D.v;touch(V.date);render()},
+log:D=>{const b=blocks(W.workouts[D.d])[+D.i],s=((U.sc[D.d]||{}).b||{})[b.i]||{},rows=s.sets||prefill(b);
+sheet(`<h3>${E(cv(b.head||b.sec))}</h3><input id="res" placeholder="Result (time, rounds + reps, total reps…)" value="${E(s.res||'')}"><label><input type="checkbox" id="rx" style="width:auto" ${s.rx===false?'':'checked'}> Rx</label><div id="sets">${rows.map(srow).join('')}</div><button data-a="addset">+ Set</button><textarea id="bn" placeholder="How did it feel?">${E(s.n||'')}</textarea><button class="pri" data-a="saveb" data-d="${D.d}" data-i="${D.i}">Save</button>`)},
+addset:()=>$('#sets').insertAdjacentHTML('beforeend',srow({})),
+saveb:D=>{const sets=[...document.querySelectorAll('#sets .sr')].map(r=>({l:r.querySelector('.l').value.trim(),w:+r.querySelector('.w').value,r:+r.querySelector('.r').value})).filter(x=>x.w||x.r);
+const s=dy(D.d);s.b[D.i]={res:$('#res').value.trim(),rx:$('#rx').checked,sets,n:$('#bn').value.trim()};touch(D.d);
+const best={};sets.forEach(x=>{const k=lk(x.l);if(!k||!x.w||!x.r||x.r>5)return;const e=Math.round(e1(x.w,x.r));if(!best[k]||e>best[k])best[k]=e});
+const of=Object.entries(best).filter(([k,e])=>e>(U.prs[k]?.v||0));closeSheet();render();
+if(of.length)sheet('<h3>New PR? 🎉</h3>'+of.map(([k,e])=>`<div class="row"><span>${LIFTS.find(x=>x[0]==k)[1]}: ${e} kg (est. 1RM)</span><button class="pri" data-a="pr" data-k="${k}" data-v="${e}" data-d="${D.d}">Update</button></div>`).join(''))},
+pr:D=>{setPR(D.k,+D.v,D.d);toast('PR updated');closeSheet();render()},
+rep:D=>{const w=W.workouts[D.d],b=blocks(w)[+D.i],s=sig(b),R=repIdx()[s].filter(x=>x.d<D.d).reverse();
+sheet('<h3>🔁 Done before</h3>'+R.map(x=>{const sc=U.sc[x.d]||{},bs=(sc.b||{})[x.i];return`<div class="card"><b>${x.d}</b> ${['','😫','😕','😐','🙂','🔥'][sc.feel||0]}<br>${bs?E(bs.res||'')+' '+(bs.rx===false?'(scaled)':'(Rx)')+(bs.sets?.length?'<br>'+bs.sets.map(z=>z.w+'×'+z.r).join(', '):'')+(bs.n?'<br>“'+E(bs.n)+'”':''):'<span class="nt">No score logged</span>'}${sc.note?'<div class="nt">Day: '+E(sc.note)+'</div>':''}</div>`}).join(''))},
+lift:D=>{const M=lh()[D.k],by={};M.rows.forEach(r=>by[r.d]=Math.max(by[r.d]||0,e1(r.w,r.r)));const ds=Object.keys(by),v=ds.map(d=>by[d]),mn=Math.min(...v),mx=Math.max(...v);
+const pts=ds.map((d,i)=>`${ds.length>1?i*300/(ds.length-1):150},${70-(mx==mn?35:(by[d]-mn)/(mx-mn)*60)}`).join(' ');
+sheet(`<h3>${E(M.n)}</h3><div class="nt">Best estimated 1RM per session</div><svg viewBox="0 0 300 80" style="width:100%;background:#0e1115;border-radius:8px"><polyline fill="none" stroke="#ff7a1a" stroke-width="2" points="${pts}"/></svg>`+M.rows.slice().reverse().slice(0,40).map(r=>`<div class="row"><span>${r.d}</span><span>${r.w} kg × ${r.r} · e1RM ${Math.round(e1(r.w,r.r))}</span></div>`).join(''))},
+gs:()=>{G={repo:$('#repo').value.trim(),token:$('#tok').value.trim()};SV('gh',G);toast('Loading…');loadU().then(loadW)},
+dl:()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(U)],{type:'application/json'}));a.download='pj-backup-'+today()+'.json';a.click()},
+cp:()=>navigator.clipboard.writeText(JSON.stringify(U)).then(()=>toast('Copied'),()=>toast('Copy failed')),
+rs:()=>{try{const o=JSON.parse($('#rt').value);U=Object.assign({sc:{},prs:{},bw:null,bar:20,inc:1,su:0},o);save();toast('Restored');render()}catch(e){toast('Invalid backup text')}}};
+document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t)return;e.preventDefault();const f=ACT[t.dataset.a];f&&f(t.dataset)});
+document.addEventListener('change',e=>{const t=e.target;
+if(t.id=='dn'){dy(V.date).note=t.value;touch(V.date)}
+else if(t.dataset.pr){const v=+t.value;if(v>0)setPR(t.dataset.pr,v)}
+else if(['bw','bar','inc'].includes(t.id)){U[t.id]=+t.value||null;if(t.id!='bw'&&!U[t.id])U[t.id]=t.id=='bar'?20:1;U.su=Date.now();save()}
+else if(t.id=='rf'&&t.files[0])t.files[0].text().then(x=>{$('#rt').value=x})});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+render();loadU().then(loadW);
+</script></body></html>
