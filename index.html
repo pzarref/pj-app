@@ -33,8 +33,12 @@ details summary{cursor:pointer;color:var(--a);font-weight:700;margin:14px 0 4px;
 #tmr{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;background:#333;color:#fff}
 #tl{font-size:7vw;font-weight:800;letter-spacing:.1em;max-width:90vw}#tt{font-size:min(30vw,22vh);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
 #tr2{font-size:6vw;margin-top:6px}#tx{opacity:.8;margin-top:8px}.tb{margin-top:30px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.tb button{font-size:20px;padding:14px 22px;background:#0006;color:#fff;border:2px solid #fff6}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px}.cal .wd{font-size:11px;color:var(--m);text-align:center}
+.cd{background:#161a20;border:1px solid transparent;border-radius:8px;min-height:54px;padding:3px;font-size:13px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;color:var(--m)}
+.cd.hw{background:var(--c);border-color:var(--bd);color:var(--t)}.cd.lg{border-color:var(--ok)}.cd.td{outline:2px solid var(--a)}.cd i{font-style:normal;font-size:14px;min-height:18px}.cd.x{visibility:hidden}
+.pfb{display:block;width:100%;font-size:22px;padding:20px;margin:10px 0}
 </style></head><body>
-<header><h1>PJ Log</h1><button data-a="sync" title="Update workouts now">⟳ Sync</button></header>
+<header><h1>PJ Log</h1><button id="pb" data-a="pfsw"></button><button data-a="sync" title="Update workouts now">⟳ Sync</button></header>
 <main id="app"></main>
 <nav><button data-a="tab" data-t="w">Workout</button><button data-a="tab" data-t="h">History</button><button data-a="tab" data-t="l">Lifts</button><button data-a="tab" data-t="s">Settings</button></nav>
 <div id="tmr"><div id="tl"></div><div id="tt"></div><div id="tr2"></div><div id="tx"></div><div class="tb" id="tb"></div></div><div id="sh"></div><div id="tm"></div><div id="ts"></div>
@@ -90,12 +94,13 @@ return P}
 const fmt=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>String(n).padStart(2,'0');return h?`${h}:${p(m)}:${p(x)}`:`${p(m)}:${p(x)}`};
 //PURE-END
 const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const LS=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},SV=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
-let U=Object.assign({sc:{},prs:{},bw:null,bar:20,inc:1,su:0},LS('u')||{}),W=LS('w')||{workouts:{}},G=LS('gh')||{},V={tab:'w',date:null},T,usha=null,tmr;
+const LS=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},SV=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const PROFILES=[['pedro','Pedro'],['cesar','César'],['rui','Rui']],defU=()=>({sc:{},prs:{},bw:null,bar:20,inc:1,su:0}),pname=()=>(PROFILES.find(x=>x[0]==PF)||[])[1]||'';
+let PF=LS('pf')||null,U=Object.assign(defU(),PF?LS('u_'+PF):{}),W=LS('w')||{workouts:{}},G=LS('gh')||{},V={tab:'w',date:null},T,usha=null,tmr;
 const today=()=>new Date().toLocaleDateString('sv'),add=(d,n)=>{const x=new Date(d+'T12:00');x.setDate(x.getDate()+n);return x.toLocaleDateString('sv')};
 const rest=d=>[0,4].includes(new Date(d+'T12:00').getDay()),sleep=ms=>new Promise(r=>setTimeout(r,ms));
-V.date=today();
-let TC=Object.assign({mode:'amrap',am:12,cap:0,er:10,ei:60,ir:8,iw:20,irs:10,prep:10},LS('tc')||{}),TT='',TB=null,TCtx='set',PRE=null,RN=null,AC=null;
+V.date=today();V.hm=LS('hv')||'l';V.cm=today().slice(0,7);
+let TC=Object.assign({mode:'amrap',am:12,cap:0,er:10,ei:60,ir:8,iw:20,irs:10,prep:10,voice:1},LS('tc')||{}),TT='',TB=null,TCtx='set',PRE=null,RN=null,AC=null;
 function cv(t){t=t.replace(/(\d+)\/(\d+)#/g,(m,a)=>Math.round(a*KG)+' kg').replace(/(\d+)\/(\d+)(?=\s*(?:m\b|cal|[”"]))/g,'$1');return t.replace(/\bBW\/70%BW\b/g,U.bw?U.bw+' kg':'BW')}
 function toast(m){const t=$('#ts');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
 function sheet(h){const s=$('#sh');s.innerHTML='<div>'+h+'<button data-a="x">Close</button></div>';s.style.display='flex'}
@@ -105,9 +110,11 @@ const api=(p,o={})=>fetch(`https://api.github.com/repos/${G.repo}/${p}`,{...o,he
 const b64=s=>{let b='';new TextEncoder().encode(s).forEach(c=>b+=String.fromCharCode(c));return btoa(b)};
 const dec=c=>new TextDecoder().decode(Uint8Array.from(atob(c.replace(/\n/g,'')),x=>x.charCodeAt(0)));
 async function loadW(){if(!G.repo)return render();try{const r=await api('contents/data/workouts.json?t='+Date.now(),{headers:{Accept:'application/vnd.github.raw+json'}});if(r.ok){W=await r.json();SV('w',W)}else if(r.status!=404)throw 0}catch(e){toast('Offline – showing saved data')}render()}
-async function loadU(){if(!G.repo)return;try{const r=await api('contents/data/user.json?t='+Date.now());if(r.status==404){usha=null;return pushU()}if(!r.ok)return;const j=await r.json();usha=j.sha;const rem=JSON.parse(dec(j.content)),m=merge(U,rem);U=m;SV('u',U);if(JSON.stringify(m)!==JSON.stringify(rem))await pushU();render()}catch(e){}}
-async function pushU(){if(!G.repo)return;try{const r=await api('contents/data/user.json',{method:'PUT',body:JSON.stringify({message:'update',content:b64(JSON.stringify(U)),...(usha?{sha:usha}:{})})});if(r.ok)usha=(await r.json()).content.sha;else if(r.status==409||r.status==422)await loadU()}catch(e){}}
-function save(){SV('u',U);clearTimeout(tmr);tmr=setTimeout(pushU,3000)}
+async function loadU(){if(!G.repo||!PF)return;const pf=PF,fn=`user-${pf}.json`;try{const r=await api(`contents/data/${fn}?t=`+Date.now(),{headers:{Accept:'application/vnd.github.raw+json'}});if(pf!==PF)return;if(r.status==404){usha=null;return pushU()}if(!r.ok)return;const rem=await r.json();
+const l=await api('contents/data?t='+Date.now());usha=l.ok?((await l.json()).find(x=>x.name==fn)||{}).sha||null:null;if(pf!==PF)return;
+const m=merge(U,rem);U=m;SV('u_'+PF,U);if(JSON.stringify(m)!==JSON.stringify(rem))await pushU();render()}catch(e){}}
+async function pushU(){if(!G.repo||!PF)return;try{const r=await api(`contents/data/user-${PF}.json`,{method:'PUT',body:JSON.stringify({message:'update',content:b64(JSON.stringify(U)),...(usha?{sha:usha}:{})})});if(r.ok)usha=(await r.json()).content.sha;else if(r.status==409||r.status==422)await loadU()}catch(e){}}
+function save(){SV('u_'+PF,U);clearTimeout(tmr);tmr=setTimeout(pushU,3000)}
 async function syncNow(){if(!G.token){V.tab='s';return render()}const before=W.generated_at;toast('Syncing…');
 const r=await api('actions/workflows/sync.yml/dispatches',{method:'POST',body:JSON.stringify({ref:'main'})});
 if(!r.ok)return toast('Could not start sync ('+r.status+'). Token needs Actions: read & write.');
@@ -140,15 +147,25 @@ if(!w){h+=`<div class="card">${rest(d)?'🛌 Rest day (Thu & Sun)':'No workout s
 if(w.cycle)h+=`<div class="nt">Cycle: ${E(w.cycle)}</div>`;
 const R=repIdx();let cur='';blocks(w).forEach(b=>{if(b.sec!==cur){if(cur)h+=/warm|cool/i.test(cur)?'</details>':'';cur=b.sec;h+=/warm|cool/i.test(cur)?`<details ${/warm/i.test(cur)?'open':''}><summary>${E(cur)}</summary>`:`<div class="sec">${E(cur)}</div>`}h+=bHTML(b,d,R)});if(/warm|cool/i.test(cur))h+='</details>';
 const s=U.sc[d]||{};h+=`<div class="card"><b>How did today feel?</b><div class="feel">${['😫','😕','😐','🙂','🔥'].map((e,i)=>`<button data-a="feel" data-v="${i+1}" class="${s.feel==i+1?'on':''}">${e}</button>`).join('')}</div><textarea id="dn" placeholder="Notes about the session…">${E(s.note||'')}</textarea></div>`;$('#app').innerHTML=h}
-function vHist(){const ds=[...new Set([...Object.keys(W.workouts),...Object.keys(U.sc)])].sort().reverse();let h=banner();
-h+=ds.length?ds.map(d=>{const s=U.sc[d],n=s?Object.keys(s.b||{}).length:0;return`<div class="row" data-a="go" data-d="${d}"><span>${d} ${new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'short'})}${W.workouts[d]?.cycle?' · '+E(W.workouts[d].cycle):''}</span><span>${n?n+' logged ':''}${['','😫','😕','😐','🙂','🔥'][s?.feel||0]}</span></div>`}).join(''):'<div class="card">Nothing yet.</div>';$('#app').innerHTML=h}
+const EM=['','😫','😕','😐','🙂','🔥'],p2=n=>String(n).padStart(2,'0');
+function vCal(){const[y,m]=V.cm.split('-').map(Number),first=new Date(y,m-1,1),dim=new Date(y,m,0).getDate(),off=(first.getDay()+6)%7;let nw=0,nl=0;
+let h=`<div class="nav2"><button data-a="cm" data-n="-1">‹</button><b>${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</b><button data-a="cm" data-n="1">›</button></div><div class="cal">`+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<div class="wd">${x}</div>`).join('');
+for(let i=0;i<off;i++)h+='<div class="cd x"></div>';
+for(let d=1;d<=dim;d++){const ds=`${y}-${p2(m)}-${p2(d)}`,w=W.workouts[ds],s=U.sc[ds],n=s?Object.keys(s.b||{}).length:0;if(w)nw++;if(n)nl++;
+h+=`<div class="cd ${w?'hw':''} ${n?'lg':''} ${ds==today()?'td':''}" data-a="go" data-d="${ds}"><span>${d}</span><i>${s?.feel?EM[s.feel]:n?'✓':w?'•':''}</i></div>`}
+return h+`</div><div class="nt" style="margin-top:8px">${nw} workouts · ${nl} with scores</div>`}
+function vHist(){let h=banner()+`<select id="hmode" style="width:auto"><option value="l" ${V.hm=='l'?'selected':''}>Single lines</option><option value="m" ${V.hm=='m'?'selected':''}>Month</option></select>`;
+if(V.hm=='m')h+=vCal();else{const ds=[...new Set([...Object.keys(W.workouts),...Object.keys(U.sc)])].sort().reverse();
+h+=ds.length?ds.map(d=>{const s=U.sc[d],n=s?Object.keys(s.b||{}).length:0;return`<div class="row" data-a="go" data-d="${d}"><span>${d} ${new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'short'})}${W.workouts[d]?.cycle?' · '+E(W.workouts[d].cycle):''}</span><span>${n?n+' logged ':''}${EM[s?.feel||0]}</span></div>`}).join(''):'<div class="card">Nothing yet.</div>'}
+$('#app').innerHTML=h}
 function lh(){const M={};Object.keys(U.sc).sort().forEach(d=>Object.values(U.sc[d].b||{}).forEach(b=>(b.sets||[]).forEach(x=>{const k=nrm(x.l||'');if(!k||!x.w||!x.r)return;(M[k]=M[k]||{n:x.l,rows:[]}).rows.push({d,w:x.w,r:x.r})})));return M}
 function vLifts(){let h='<div class="card"><b>My 1RMs (kg)</b>'+LIFTS.map(([k,n])=>`<div class="row"><span>${n}${U.prs[k]?`<br><small class="nt">set ${U.prs[k].d||new Date(U.prs[k].u).toLocaleDateString('sv')}${U.prs[k].h?.length?' · prev '+U.prs[k].h.slice(-3).reverse().map(x=>x.v+' kg ('+x.d+')').join(', '):''}</small>`:''}</span><input style="width:90px;margin:0" type="number" inputmode="decimal" data-pr="${k}" value="${U.prs[k]?.v||''}"></div>`).join('')+'<div class="nt">Typed PRs are dated today; PRs accepted from a logged set use that workout date. Back squat % are calculated on T1RM (90% of this) when the programme says so.</div></div><div class="sec">Logged lifts</div>';
 const M=lh(),ks=Object.keys(M);h+=ks.length?ks.map(k=>`<div class="row" data-a="lift" data-k="${E(k)}"><span>${E(M[k].n)}</span><span>best ${Math.max(...M[k].rows.map(r=>r.w))} kg</span></div>`).join(''):'<div class="nt">Log sets in a workout to see history here.</div>';$('#app').innerHTML=h}
-function vSet(){TCtx='set';$('#app').innerHTML=`<div class="card"><b>⏱ Timer</b>${tform()}</div><div class="card"><b>Training</b>Bodyweight (kg)<input id="bw" type="number" inputmode="decimal" value="${U.bw||''}">Bar weight (kg)<input id="bar" type="number" value="${U.bar}">Load increment (kg)<input id="inc" type="number" step="0.5" value="${U.inc}"></div>
+function vSet(){TCtx='set';$('#app').innerHTML=`<div class="card"><b>Profile: ${pname()}</b><div class="nt">PRs, scores and bodyweight are separate for each profile. GitHub connection is shared on this phone.</div><button data-a="pfsw">Switch profile</button></div><div class="card"><b>⏱ Timer</b>${tform()}</div><div class="card"><b>Training</b>Bodyweight (kg)<input id="bw" type="number" inputmode="decimal" value="${U.bw||''}">Bar weight (kg)<input id="bar" type="number" value="${U.bar}">Load increment (kg)<input id="inc" type="number" step="0.5" value="${U.inc}"></div>
 <div class="card"><b>GitHub</b><input id="repo" placeholder="user/pj-data" value="${E(G.repo||'')}"><input id="tok" type="password" placeholder="Token" value="${E(G.token||'')}"><button class="pri" data-a="gs">Save & load</button></div>
 <div class="card"><b>Backup</b><div class="nt">Your scores also live in data/user.json in your private repo.</div><button data-a="dl">Download .json</button><button data-a="cp">Copy to clipboard</button><textarea id="rt" placeholder="Paste a backup here to restore…"></textarea><input id="rf" type="file" accept=".json"><button data-a="rs">Restore</button></div>`}
-function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==V.tab));({w:vDay,h:vHist,l:vLifts,s:vSet})[V.tab]()}
+function vProf(){$('#app').innerHTML='<div class="card" style="text-align:center"><h2>Who is training?</h2>'+PROFILES.map(([k,n])=>`<button class="pfb" data-a="pf" data-p="${k}">${n}</button>`).join('')+'</div>'}
+function render(){$('#pb').textContent=PF?'👤 '+pname():'';document.querySelector('nav').style.display=PF?'flex':'none';if(!PF)return vProf();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==V.tab));({w:vDay,h:vHist,l:vLifts,s:vSet})[V.tab]()}
 // ---- timer
 function tform(){const c=TC,M=[['amrap','AMRAP'],['ft','For time'],['emom','EMOM'],['int','Intervals'],['sw','Stopwatch']];
 const f=(k,l,v)=>`<label class="nt">${l}</label><input type="number" inputmode="numeric" data-tf="${k}" value="${v}">`;
@@ -158,10 +175,13 @@ if(c.mode=='ft')h+=f('cap','Time cap in minutes (0 = 60)',c.cap);
 if(c.mode=='emom')h+=f('er','Rounds',c.er)+f('ei','Every (seconds)',c.ei);
 if(c.mode=='int')h+=f('ir','Rounds',c.ir)+f('iw','Work (seconds)',c.iw)+f('irs','Rest (seconds)',c.irs)+'<button data-a="tabata">Tabata 8 × 20/10</button>';
 h+=`<label class="nt">Get-ready countdown (seconds)</label><select data-tf="prep">${[0,5,10,15,20,30].map(x=>`<option ${c.prep==x?'selected':''}>${x}</option>`).join('')}</select>`;
+h+=`<label class="nt">Voice announcements</label><select data-tf="voice"><option value="1" ${c.voice?'selected':''}>On</option><option value="0" ${c.voice?'':'selected'}>Off</option></select><button data-a="ttest">🔊 Test sound</button>`;
 return h+'<button class="pri" data-a="tstart" style="width:100%;font-size:18px;padding:14px">▶ Start</button>'}
 const readTF=()=>document.querySelectorAll('[data-tf]').forEach(i=>TC[i.dataset.tf]=+i.value);
 const reTF=()=>TCtx=='sheet'?sheet(`<h3>⏱ ${E(TT)}</h3>`+tform()):render();
-function beep(f,ms){try{const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;o.connect(g);g.connect(AC.destination);g.gain.value=.4;o.start();o.stop(AC.currentTime+ms/1000)}catch(e){}}
+function beep(f,ms,ty){try{const o=AC.createOscillator(),g=AC.createGain();o.type=ty||'sine';o.frequency.value=f;o.connect(g);g.connect(AC.destination);g.gain.value=ty?.35:.6;o.start();o.stop(AC.currentTime+ms/1000)}catch(e){}}
+const buzz=(f,ms=600)=>beep(f,ms,'square');
+function say(t){if(!TC.voice||!window.speechSynthesis)return;try{const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 const wake=()=>{try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(l=>{if(RN)RN.wl=l}).catch(()=>{})}catch(e){}};
 document.addEventListener('visibilitychange',()=>{if(RN&&!RN.done&&!document.hidden)wake()});
 function ctrl(){const b=$('#tb');b.innerHTML=RN.done?(TB&&RN.res?'<button data-a="tlog">Log this time</button>':TB?'<button data-a="tlog">Log score</button>':'')+'<button data-a="tclose">Close</button>':`<button data-a="tpause">${RN.pa?'Resume':'Pause'}</button>${RN.P[RN.bi]?.up?'<button data-a="tfin">Finish</button>':''}<button data-a="tstop">Stop</button>`}
@@ -170,16 +190,20 @@ function tick(){if(!RN||RN.pa||RN.done)return;const e=(performance.now()-RN.t0)/
 for(;i<RN.P.length;i++){if(e<acc+RN.P[i].s)break;acc+=RN.P[i].s}
 if(i>=RN.P.length)return tfinish(e,RN.P.at(-1).up?'CAP':'');
 const p=RN.P[i],el=e-acc,left=p.s-el,L=Math.ceil(left);
-if(i!==RN.bi){RN.bi=i;RN.l=99;ctrl();if(p.k!='prep'||i>0){beep(p.k=='rest'?600:1000,500);navigator.vibrate&&navigator.vibrate(200)}}
-if(L!=RN.l){RN.l=L;if(L>=1&&L<=3&&!p.up)beep(700,120)}
+if(i!==RN.bi){RN.bi=i;RN.l=99;ctrl();if(p.k!='prep'){buzz(p.k=='rest'?600:1100);navigator.vibrate&&navigator.vibrate(200);say(p.k=='rest'?'Rest':!p.of||p.r==1?'Go':p.r==p.of?'Last round':'Round '+p.r)}}
+if(L!=RN.l){RN.l=L;if(L>=1&&L<=3&&(!p.up||RN.cap))beep(800,150)}
+{const S=p.s,M=[];if(p.k=='work'&&!p.of&&!p.up){if(S>=120)M.push([S/2,'Halfway there']);if(S>=75&&S/2!=60)M.push([60,'One minute left']);if(S>=45&&S/2!=30)M.push([30,'Thirty seconds']);if(S>20)M.push([10,'Ten seconds'])}
+else if(p.up&&RN.cap&&S>=120)M.push([60,'One minute to the cap'],[30,'Thirty seconds to the cap']);
+M.forEach(([x,t])=>{const k=i+'_'+x;if(left<=x&&left>x-2&&!RN.said[k]){RN.said[k]=1;say(t)}})}
 const total=RN.P.reduce((a,x)=>a+(x.up?0:x.s),0),pre=RN.P[0].k=='prep'?RN.P[0].s:0;
 paint(p.k=='prep'?'#b8860b':p.k=='rest'?'#b53a3a':'#1f8a4c',p.n,p.up?fmt(el):fmt(L),p.of?`Round ${p.r} / ${p.of}`:'',p.up?(p.k=='work'&&RN.P.length&&RN.cap?`Cap ${fmt(RN.cap)}`:''):(RN.P.length>1?`Total left ${fmt(total-e)}`:''))}
 function tfinish(e,how){clearInterval(RN.iv);RN.done=true;const pre=RN.P[0].k=='prep'?RN.P[0].s:0,up=RN.P.at(-1).up;
-RN.res=up&&how!='CAP'?fmt(e-pre):'';[0,350,700].forEach(d=>setTimeout(()=>beep(1000,250),d));navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);
+RN.res=up&&how!='CAP'?fmt(e-pre):'';buzz(900,1100);say(how=='CAP'?'Time cap':up?'Done':'Time');navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);
 paint('#2a3b66',how=='CAP'?'TIME CAP':'DONE',RN.res||(up?fmt(e-pre):''),'', '');ctrl()}
 function runT(label){readTF();const c=TC;SV('tc',c);const P=phases(c);if(!P.length||P.some(x=>!(x.s>0)))return toast('Check the numbers');
 AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume();closeSheet();
-RN={P,t0:performance.now(),pa:null,bi:-1,done:false,label};const up=P.find(x=>x.up);if(up&&c.mode=='ft')RN.cap=up.s;
+if(TC.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}catch(e){}}
+RN={P,t0:performance.now(),pa:null,bi:-1,done:false,label,said:{}};const up=P.find(x=>x.up);if(up&&c.mode=='ft')RN.cap=up.s;
 $('#tmr').style.display='flex';wake();RN.iv=setInterval(tick,100);tick()}
 function closeT(){if(RN){clearInterval(RN.iv);try{RN.wl&&RN.wl.release()}catch(e){}}RN=null;$('#tmr').style.display='none'}
 // ---- actions
@@ -190,12 +214,19 @@ return Array.from({length:n},(_,i)=>({l:nm,w:calc(U.prs[k]?.v,L.ps[i]??L.ps[0],L
 function setPR(k,v,d){const o=U.prs[k];if(o&&o.v==v)return;U.prs[k]={v,d:d||today(),u:Date.now(),h:(o?.h||[]).concat(o?[{v:o.v,d:o.d||new Date(o.u).toLocaleDateString('sv')}]:[])};U.su=Date.now();save()}
 const ACT={
 tab:D=>{V.tab=D.t;render()},
+cm:D=>{const[y,m]=V.cm.split('-').map(Number),x=new Date(y,m-1+ +D.n,1);V.cm=x.getFullYear()+'-'+p2(x.getMonth()+1);render()},
+pfsw:async()=>{clearTimeout(tmr);await pushU();PF=null;SV('pf',null);usha=null;render()},
+pf:D=>{PF=D.p;SV('pf',PF);U=Object.assign(defU(),LS('u_'+PF)||{});usha=null;V.tab='w';V.date=today();render();
+const old=LS('u');if(old&&!LS('um')&&!Object.keys(U.sc).length&&!Object.keys(U.prs).length)sheet(`<h3>Import earlier data?</h3><div class="nt">Found scores and PRs saved on this phone from before profiles existed. Import them into ${pname()}?</div><button class="pri" data-a="imp">Import into ${pname()}</button><button data-a="impno">No, start empty</button>`);
+loadU().then(loadW)},
+imp:()=>{U=Object.assign(defU(),LS('u'));SV('um',1);save();closeSheet();render()},impno:()=>{SV('um',1);closeSheet()},
 bt:D=>{const b=blocks(W.workouts[D.d])[+D.i];readTF();Object.assign(TC,tguess(b.head+' '+b.notes.join(' ')+' '+b.items.join(' '))||{});TT=b.head||b.sec;TB={d:D.d,i:D.i};TCtx='sheet';reTF()},
 tmode:D=>{readTF();TC.mode=D.m;reTF()},tabata:()=>{readTF();Object.assign(TC,{ir:8,iw:20,irs:10});reTF()},
 tstart:()=>{if(TCtx=='set')TB=null;runT()},
 tpause:()=>{if(RN.pa){RN.t0+=performance.now()-RN.pa;RN.pa=null}else RN.pa=performance.now();ctrl()},
 tfin:()=>tfinish((performance.now()-RN.t0)/1000,''),
 tstop:()=>{if(RN.cf)closeT();else{RN.cf=1;toast('Tap Stop again to end');setTimeout(()=>{if(RN)RN.cf=0},3000)}},
+ttest:()=>{readTF();AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume();beep(800,150);setTimeout(()=>buzz(1100),400);setTimeout(()=>say('Halfway there'),1300)},
 tclose:closeT,tlog:()=>{const r=RN.res,b=TB;closeT();PRE=r;ACT.log({d:b.d,i:b.i})},go:D=>{V.tab='w';V.date=D.d;render()},step:D=>{V.date=add(V.date,+D.n);render()},sync:()=>syncNow(),x:closeSheet,
 tm:D=>{clearInterval(T);let t=+D.s;const f=()=>{$('#tm').innerHTML=`⏱ ${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}<button data-a="tmx">✕</button>`;if(t--<=0){clearInterval(T);$('#tm').innerHTML='';navigator.vibrate&&navigator.vibrate([300,150,300])}};f();T=setInterval(f,1000)},
 vid:D=>{const[id,t]=D.v.split(':');sheet(`<h3>${E(D.n)}</h3><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube-nocookie.com/embed/${id}?playsinline=1&rel=0&autoplay=1${t?'&start='+t:''}" style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><p><a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" style="color:var(--a)">Video not playing? Open in YouTube</a></p>`)},
@@ -223,6 +254,7 @@ rs:()=>{try{const o=JSON.parse($('#rt').value);U=Object.assign({sc:{},prs:{},bw:
 document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t)return;e.preventDefault();const f=ACT[t.dataset.a];f&&f(t.dataset)});
 document.addEventListener('change',e=>{const t=e.target;
 if(t.id=='dn'){dy(V.date).note=t.value;touch(V.date)}
+else if(t.id=='hmode'){V.hm=t.value;SV('hv',V.hm);render()}
 else if(t.dataset.tf)TC[t.dataset.tf]=+t.value
 else if(t.dataset.pr){const v=+t.value;if(v>0)setPR(t.dataset.pr,v)}
 else if(['bw','bar','inc'].includes(t.id)){U[t.id]=+t.value||null;if(t.id!='bw'&&!U[t.id])U[t.id]=t.id=='bar'?20:1;U.su=Date.now();save()}
